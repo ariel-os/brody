@@ -23,7 +23,8 @@ fn sig_structure(protected: &[u8], payload: &[u8]) -> Vec<u8> {
 }
 
 /// Signs `digest_bstr` (the exact bytes of the existing `bstr .cbor SUIT_Digest`) with
-/// `signer` and returns a `bstr`-wrapped `COSE_Sign1_Tagged` (`#6.18(...)`) block.
+/// `signer` and returns a `bstr`-wrapped detached-payload `COSE_Sign1_Tagged`
+/// (`#6.18(...)`) block.
 pub fn sign_digest(digest_bstr: &[u8], signer: &Signer) -> Result<Vec<u8>, Error> {
     let protected_header = Value::Map(vec![(Value::from(1i64), Value::from(signer.alg_id() as i64))]);
     let mut protected = Vec::new();
@@ -35,7 +36,7 @@ pub fn sign_digest(digest_bstr: &[u8], signer: &Signer) -> Result<Vec<u8>, Error
     let cose_sign1 = Value::Array(vec![
         Value::Bytes(protected),
         Value::Map(Vec::new()), // unprotected header: empty, no `kid` for v1
-        Value::Bytes(digest_bstr.to_vec()),
+        Value::Null, // SUIT uses detached payload mode; digest_bstr is supplied externally
         Value::Bytes(signature),
     ]);
 
@@ -95,7 +96,7 @@ WXSFBkWRMYSvj7UfvonsDFML67YB2F6MR5LrF+FGHh7yFSCekjzRCwQ5
         let digest = b"another-fixed-suit-digest-bstr";
         let wrapped = sign_digest(digest, &signer).unwrap();
 
-        // Outer layer: a bstr whose contents decode to Tag(18, [protected, {}, payload, sig]).
+        // Outer layer: a bstr whose contents decode to Tag(18, [protected, {}, null, sig]).
         let outer: Value = ciborium::de::from_reader(wrapped.as_slice()).unwrap();
         let inner_bytes = match outer {
             Value::Bytes(b) => b,
@@ -113,7 +114,7 @@ WXSFBkWRMYSvj7UfvonsDFML67YB2F6MR5LrF+FGHh7yFSCekjzRCwQ5
             other => panic!("expected 4-element array, got {other:?}"),
         };
         assert_eq!(elements.len(), 4);
-        assert_eq!(elements[2], Value::Bytes(digest.to_vec()));
+        assert_eq!(elements[2], Value::Null);
         match &elements[3] {
             Value::Bytes(sig) => assert_eq!(sig.len(), 64), // ES256: r||s = 64 bytes
             other => panic!("expected signature bstr, got {other:?}"),

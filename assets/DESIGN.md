@@ -52,9 +52,10 @@ array. Re-signing/replacing an existing block is not supported.
    empty for SUIT signing).
 3. Raw `r || s` signature bytes over the `Sig_structure` (not DER — required for COSE
    interop).
-4. `COSE_Sign1` array `[protected, {}, digest_bstr, signature]` (empty unprotected header,
-   no `kid`), wrapped in CBOR tag `18` (`COSE_Sign1_Tagged`) and bstr-encoded for
-   embedding back into the envelope.
+4. Detached-payload `COSE_Sign1` array `[protected, {}, null, signature]` (empty unprotected
+  header, no `kid`), with `digest_bstr` supplied externally to the `Sig_structure`, wrapped
+  in CBOR tag `18` (`COSE_Sign1_Tagged`) and bstr-encoded for embedding back into the
+  envelope.
 
 ECDSA signing uses RFC 6979 deterministic nonces, so signing the same digest with the
 same key always produces byte-identical output — this is relied on by the unit tests.
