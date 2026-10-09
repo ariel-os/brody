@@ -2,6 +2,16 @@
 
 All notable changes to `brody` are documented in this file.
 
+## [0.1.1] - 2026-10-09
+
+### Fixed
+
+- Bug fix - COSE_Sign1 does not attach the digest payload following the draft-ietf-suit-manifest-37 specification
+
+## [0.1.0] - 2026-09-21
+
+- Initial implementation
+
 ## [Unreleased]
 
 ### Added

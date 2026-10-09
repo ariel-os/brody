@@ -1,6 +1,6 @@
 [package]
 name = "brody"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Signs SUIT manifest envelopes (COSE_Sign1, ES256/ES384) produced by taylor or any spec-conformant SUIT CBOR encoder"
 license = "MIT OR Apache-2.0"
