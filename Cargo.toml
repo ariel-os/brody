@@ -27,3 +27,4 @@ p256 = { version = "0.13", features = ["ecdsa", "pem"] }
 p384 = { version = "0.13", features = ["ecdsa", "pem"] }
 signature = "2.2"
 elliptic-curve = { version = "0.13", features = ["pem"] }
+clap = { version = "4.6.7", features = ["derive"] }
