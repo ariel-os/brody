@@ -1,58 +1,43 @@
 //! brody: CLI front-end for the `brody` library, signing a `SUIT_Envelope`'s
 //! authentication wrapper with ECDSA (ES256/ES384).
 
-use std::{fs, process::ExitCode};
+use std::{fs, path::PathBuf, process::ExitCode};
 
 use brody::{Algorithm, Error, Signer};
-
-const USAGE: &str = "usage: brody --input <envelope.cbor> --output <signed.cbor> \
---alg <es256|es384> (--key <key.pem> | --key-hex <hex-scalar>)";
+use clap::{ArgGroup, Parser, ValueEnum};
 
 /// Parsed CLI arguments for a single signing invocation.
+#[derive(Debug, Parser)]
+#[command(
+    about = "Signs a SUIT_Envelope CBOR file with ECDSA.",
+    group(ArgGroup::new("key").required(true).args(["key_pem_path", "key_hex"]))
+)]
 struct Args {
-    input: String,
-    output: String,
-    algorithm: Algorithm,
-    key_pem_path: Option<String>,
+    #[arg(long, short = 'i', value_name = "PATH")]
+    input: PathBuf,
+    #[arg(long, short = 'o', value_name = "PATH")]
+    output: PathBuf,
+    #[arg(long = "alg", value_enum, value_name = "ALGORITHM")]
+    algorithm: CliAlgorithm,
+    #[arg(long = "key", short = 'k', value_name = "PATH")]
+    key_pem_path: Option<PathBuf>,
+    #[arg(long = "key-hex", value_name = "HEX")]
     key_hex: Option<String>,
 }
 
-/// Parses `std::env::args()` into [`Args`], returning a human-readable error on bad usage.
-fn parse_args() -> Result<Args, String> {
-    let mut input = None;
-    let mut output = None;
-    let mut algorithm = None;
-    let mut key_pem_path = None;
-    let mut key_hex = None;
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum CliAlgorithm {
+    Es256,
+    Es384,
+}
 
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--input" => input = Some(args.next().ok_or("--input requires a value")?),
-            "--output" => output = Some(args.next().ok_or("--output requires a value")?),
-            "--alg" => {
-                let value = args.next().ok_or("--alg requires a value")?;
-                algorithm = Some(match value.as_str() {
-                    "es256" => Algorithm::Es256,
-                    "es384" => Algorithm::Es384,
-                    other => {
-                        return Err(format!("unknown --alg value: {other} (expected es256 or es384)"))
-                    }
-                });
-            }
-            "--key" => key_pem_path = Some(args.next().ok_or("--key requires a value")?),
-            "--key-hex" => key_hex = Some(args.next().ok_or("--key-hex requires a value")?),
-            other => return Err(format!("unknown argument: {other}")),
+impl From<CliAlgorithm> for Algorithm {
+    fn from(value: CliAlgorithm) -> Self {
+        match value {
+            CliAlgorithm::Es256 => Self::Es256,
+            CliAlgorithm::Es384 => Self::Es384,
         }
     }
-
-    Ok(Args {
-        input: input.ok_or("missing required --input <path>")?,
-        output: output.ok_or("missing required --output <path>")?,
-        algorithm: algorithm.ok_or("missing required --alg <es256|es384>")?,
-        key_pem_path,
-        key_hex,
-    })
 }
 
 /// Loads the `Signer` requested by `args`, from either a PEM file or a raw hex scalar.
@@ -60,14 +45,16 @@ fn load_signer(args: &Args) -> Result<Signer, Error> {
     match (&args.key_pem_path, &args.key_hex) {
         (Some(path), None) => {
             let pem = fs::read_to_string(path)?;
-            Signer::from_pem(&pem, args.algorithm)
+            Signer::from_pem(&pem, args.algorithm.into())
         }
         (None, Some(hex_str)) => {
             let bytes = hex::decode(hex_str)
                 .map_err(|e| Error::InvalidKey(format!("invalid --key-hex value: {e}")))?;
-            Signer::from_raw_bytes(&bytes, args.algorithm)
+            Signer::from_raw_bytes(&bytes, args.algorithm.into())
         }
-        (Some(_), Some(_)) => Err(Error::InvalidKey("specify only one of --key or --key-hex".into())),
+        (Some(_), Some(_)) => Err(Error::InvalidKey(
+            "specify only one of --key or --key-hex".into(),
+        )),
         (None, None) => Err(Error::InvalidKey(
             "missing required --key <path> or --key-hex <hex>".into(),
         )),
@@ -84,13 +71,7 @@ fn run(args: &Args) -> Result<(), Error> {
 }
 
 fn main() -> ExitCode {
-    let args = match parse_args() {
-        Ok(args) => args,
-        Err(msg) => {
-            eprintln!("error: {msg}\n{USAGE}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let args = Args::parse();
 
     match run(&args) {
         Ok(()) => ExitCode::SUCCESS,

@@ -82,8 +82,6 @@ whole crate, keeping the library's `Result` type uniform for callers.
 - **No `coset` crate**: COSE structures are hand-built with `ciborium::value::Value`
   (matches the sibling `taylor` project's stance after a confirmed bug in the `cddl`
   crate; keeps CBOR fully under direct control).
-- **No `clap`**: CLI parsing is a small hand-rolled loop over `std::env::args()`; the
-  4-flag surface doesn't yet justify the dependency.
 - **No `kid` header**: unprotected header is always empty in v1.
 - **No re-signing**: existing authentication blocks are never modified or removed.
 
