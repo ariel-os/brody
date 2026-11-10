@@ -13,11 +13,47 @@ Implemented and tested — see [assets/DESIGN.md](assets/DESIGN.md) for the full
 ## Usage
 
 ```
-cargo run -- --input envelope.cbor --output signed.cbor --alg es256 --key private-key.pem
+cargo run -- --input envelope.cbor --output signed.cbor --alg es256 --key-source provided --key private-key.pem
 ```
 
-`--alg` accepts `es256` or `es384`. The private key can be supplied either as a PEM file
-via `--key <path>` (PKCS8 or SEC1) or as raw scalar bytes in hex via `--key-hex <hex>`.
+`--alg` accepts `es256` or `es384`. `--key-source` accepts `provided` or `hsm` and defaults
+to `hsm`. With `provided`, supply a private key either as a PEM file via `--key <path>`
+(PKCS8 or SEC1) or as raw scalar bytes in hex via `--key-hex <hex>`.
+
+### HSM configuration
+
+With `hsm`, the signer logs in to the token with the given label and looks up the private
+EC key by label and ID, following `cryptoki_example.rs`. These five settings can be given in
+a TOML config file, `hsm_config.toml`, or as command-line arguments:
+
+| Config field  | Argument        | Description                                    |
+|---------------|-----------------|------------------------------------------------|
+| `module`      | `--hsm-module`  | Path to the PKCS#11 module                     |
+| `pin`         | `--hsm-pin`     | User PIN for the token                         |
+| `token-label` | `--token-label` | Label of the token that holds the signing key  |
+| `key-label`   | `--key-label`   | Label of the signing key                       |
+| `key-id`      | `--key-id`      | ID of the signing key, hex-encoded (e.g. `02`) |
+
+Example `hsm_config.toml`:
+
+```toml
+module = "/usr/lib/softhsm/libsofthsm2.so"
+pin = "asdf"
+token-label = "TestToken"
+key-label = "TestSigningKeyES256"
+key-id = "02"
+```
+
+- The config file is read from `./hsm_config.toml` in the current directory by default.
+  Use `--hsm-config <path>` to read a different file.
+- A command-line argument overrides the matching config field.
+- An argument is required only when the config file is missing or its corresponding field is
+  missing, empty, or invalid (for `key-id`, not valid hex). A malformed TOML file is an error.
+- The HSM arguments can only be used with `--key-source hsm`.
+
+The PIN can be given in the config file or on the command line. Command-line arguments are
+visible to other users on the system, and config files should be kept out of version control
+if they contain a real PIN.
 
 ## Library usage
 
@@ -51,7 +87,7 @@ To manually exercise the CLI against a real envelope:
 openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt > test-key.pem
 
 # sign an envelope file
-cargo run -- --input path/to/envelope.cbor --output signed.cbor --alg es256 --key test-key.pem
+cargo run -- --input path/to/envelope.cbor --output signed.cbor --alg es256 --key-source provided --key test-key.pem
 
 # inspect the result
 xxd signed.cbor | head
