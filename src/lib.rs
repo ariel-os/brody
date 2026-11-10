@@ -67,13 +67,20 @@ WXSFBkWRMYSvj7UfvonsDFML67YB2F6MR5LrF+FGHh7yFSCekjzRCwQ5
             Value::Array(e) => e,
             other => panic!("expected array, got {other:?}"),
         };
-        assert_eq!(elements.len(), 2, "expected original digest + one appended auth block");
+        assert_eq!(
+            elements.len(),
+            2,
+            "expected original digest + one appended auth block"
+        );
         assert_eq!(elements[0], Value::Bytes(digest));
 
         match &elements[1] {
             Value::Bytes(block) => {
                 let tagged: Value = ciborium::de::from_reader(block.as_slice()).unwrap();
-                assert!(matches!(tagged, Value::Tag(18, _)), "expected COSE_Sign1_Tagged");
+                assert!(
+                    matches!(tagged, Value::Tag(18, _)),
+                    "expected COSE_Sign1_Tagged"
+                );
             }
             other => panic!("expected bstr, got {other:?}"),
         }
