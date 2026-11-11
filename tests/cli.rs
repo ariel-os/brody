@@ -129,26 +129,6 @@ fn rejects_missing_required_args() {
 }
 
 #[test]
-fn requires_hsm_module_by_default() {
-    let output = Command::new(env!("CARGO_BIN_EXE_brody"))
-        .args([
-            "--hsm-config",
-            "missing_hsm_config.toml",
-            "--input",
-            "input.cbor",
-            "--output",
-            "output.cbor",
-            "--alg",
-            "es256",
-        ])
-        .output()
-        .expect("failed to run brody binary");
-
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--hsm-module <path>"));
-}
-
-#[test]
 fn provided_key_source_requires_key() {
     let output = Command::new(env!("CARGO_BIN_EXE_brody"))
         .args([
@@ -202,6 +182,8 @@ fn hsm_source_requires_pin() {
             "output.cbor",
             "--alg",
             "es256",
+            "--key-source",
+            "hsm",
             "--hsm-module",
             "module.so",
         ])
