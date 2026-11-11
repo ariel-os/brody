@@ -28,7 +28,7 @@ struct Args {
         short = 's',
         value_enum,
         value_name = "SOURCE",
-        default_value = "hsm"
+        default_value = "provided"
     )]
     key_source: CliKeySource,
     #[arg(long = "hsm-config", value_name = "PATH")]

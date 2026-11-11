@@ -13,14 +13,14 @@ Implemented and tested — see [assets/DESIGN.md](assets/DESIGN.md) for the full
 ## Usage
 
 ```
-cargo run -- --input envelope.cbor --output signed.cbor --alg es256 --key-source provided --key private-key.pem
+cargo run -- --input envelope.cbor --output signed.cbor --alg es256 --key private-key.pem
 ```
 
 `--alg` accepts `es256` or `es384`. `--key-source` accepts `provided` or `hsm` and defaults
-to `hsm`. With `provided`, supply a private key either as a PEM file via `--key <path>`
+to `provided`. With `provided`, supply a private key either as a PEM file via `--key <path>`
 (PKCS8 or SEC1) or as raw scalar bytes in hex via `--key-hex <hex>`.
 
-### HSM configuration
+### HSM usage
 
 With `hsm`, the signer logs in to the token with the given label and looks up the private
 EC key by label and ID, following `cryptoki_example.rs`. These five settings can be given in
@@ -87,7 +87,7 @@ To manually exercise the CLI against a real envelope:
 openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt > test-key.pem
 
 # sign an envelope file
-cargo run -- --input path/to/envelope.cbor --output signed.cbor --alg es256 --key-source provided --key test-key.pem
+cargo run -- --input path/to/envelope.cbor --output signed.cbor --alg es256 --key test-key.pem
 
 # inspect the result
 xxd signed.cbor | head
