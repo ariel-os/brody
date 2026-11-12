@@ -14,11 +14,13 @@ pub use error::Error;
 pub use keys::{Algorithm, Signer};
 
 /// Signs `envelope_bytes` (a full `SUIT_Envelope` CBOR blob) with `signer`: extracts the
-/// existing `SUIT_Digest`, signs it, and appends a new `COSE_Sign1_Tagged` authentication
-/// block, returning the re-encoded envelope bytes.
+/// existing `SUIT_Digest`, verifies it against the manifest at key 3, signs it, and appends a
+/// new `COSE_Sign1_Tagged` authentication block, returning the re-encoded envelope bytes.
+/// Nothing is signed if the digest does not match the manifest.
 pub fn sign_envelope(envelope_bytes: &[u8], signer: &Signer) -> Result<Vec<u8>, Error> {
     let auth_array_bytes = envelope::extract_authentication(envelope_bytes)?;
     let digest_bstr = envelope::digest_from_authentication(&auth_array_bytes)?;
+    envelope::verify_manifest_digest(envelope_bytes, &digest_bstr)?;
     let auth_block = cose::sign_digest(&digest_bstr, signer)?;
     let new_auth_array_bytes =
         envelope::append_authentication_block(&auth_array_bytes, &auth_block)?;
@@ -29,6 +31,7 @@ pub fn sign_envelope(envelope_bytes: &[u8], signer: &Signer) -> Result<Vec<u8>, 
 mod tests {
     use super::*;
     use ciborium::value::Value;
+    use sha2::{Digest, Sha256};
 
     // Throwaway P-256 test key (PKCS8 PEM), generated solely for this test via:
     // `openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt`
@@ -52,10 +55,22 @@ WXSFBkWRMYSvj7UfvonsDFML67YB2F6MR5LrF+FGHh7yFSCekjzRCwQ5
         out
     }
 
+    /// Returns the `SUIT_Digest` bstr (`[-16, sha-256(bstr-wrapped manifest)]`) that matches
+    /// `manifest`, as it would appear in `SUIT_Authentication[0]`.
+    fn suit_digest_bstr(manifest: &[u8]) -> Vec<u8> {
+        let mut manifest_bstr = Vec::new();
+        ciborium::ser::into_writer(&Value::Bytes(manifest.to_vec()), &mut manifest_bstr).unwrap();
+        let digest = Sha256::digest(&manifest_bstr);
+        let suit_digest = Value::Array(vec![Value::from(-16i64), Value::Bytes(digest.to_vec())]);
+        let mut out = Vec::new();
+        ciborium::ser::into_writer(&suit_digest, &mut out).unwrap();
+        out
+    }
+
     #[test]
     fn sign_envelope_appends_block_and_preserves_manifest() {
-        let digest = b"fixed-digest-for-lib-test".to_vec();
         let manifest = b"fixed-manifest-for-lib-test".to_vec();
+        let digest = suit_digest_bstr(&manifest);
         let envelope_bytes = build_test_envelope(&digest, &manifest);
 
         let signer = Signer::from_pem(ES256_PKCS8_PEM, Algorithm::Es256).unwrap();
@@ -77,6 +92,16 @@ WXSFBkWRMYSvj7UfvonsDFML67YB2F6MR5LrF+FGHh7yFSCekjzRCwQ5
             }
             other => panic!("expected bstr, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn sign_envelope_rejects_digest_not_matching_manifest() {
+        let digest = suit_digest_bstr(b"original-manifest");
+        let envelope_bytes = build_test_envelope(&digest, b"tampered-manifest");
+
+        let signer = Signer::from_pem(ES256_PKCS8_PEM, Algorithm::Es256).unwrap();
+        let err = sign_envelope(&envelope_bytes, &signer).unwrap_err();
+        assert!(matches!(err, Error::DigestMismatch(_)), "got {err:?}");
     }
 
     #[test]

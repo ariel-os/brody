@@ -11,7 +11,8 @@ flowchart LR
     CLI[main.rs\nCLI arg parsing] --> LIB[lib.rs\nsign_envelope]
     LIB --> ENV1[envelope::extract_authentication]
     ENV1 --> ENV2[envelope::digest_from_authentication]
-    ENV2 --> COSE[cose::sign_digest]
+    ENV2 --> VERIFY[envelope::verify_manifest_digest]
+    VERIFY --> COSE[cose::sign_digest]
     COSE --> KEYS[keys::Signer::sign]
     COSE --> ENV3[envelope::append_authentication_block]
     ENV3 --> ENV4[envelope::replace_authentication]
@@ -40,8 +41,17 @@ with:
 - key `3` (`suit-manifest`): opaque bytes, left untouched by brody.
 
 Signing is **append-only**: brody never removes or replaces an existing signature
-block, it only extracts the digest (element `0`) and pushes a new signed block onto the
-array. Re-signing/replacing an existing block is not supported.
+block, it only extracts the digest (element `0` of the `suit-authentication-wrapper`)
+and pushes a new signed block onto the array. Re-signing/replacing an existing block is
+not supported.
+
+Before signing, brody verifies that the digest matches the manifest, as required by the
+[SUIT manifest specification](https://www.ietf.org/archive/id/draft-ietf-suit-manifest-37.html#section-8.3).
+The digest in element `0` of the `suit-authentication-wrapper` is parsed as a `SUIT_Digest`
+(`[alg_id, digest_bytes, *ext]`), and the digest is recomputed over the raw bytes of key `3`,
+including its CBOR bstr header, as they appear in the input. Only SHA-256 (`-16`), SHA-384
+(`-43`), and SHA-512 (`-44`) are supported. A mismatch, an unsupported algorithm, or a
+malformed `SUIT_Digest` is an error, and nothing is signed.
 
 ## COSE_Sign1 construction
 

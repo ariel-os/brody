@@ -7,6 +7,8 @@ use std::fmt;
 pub enum Error {
     /// The input bytes are not a well-formed `SUIT_Envelope` CBOR map.
     InvalidEnvelope(String),
+    /// The `SUIT_Digest` in the envelope does not match the manifest at key 3.
+    DigestMismatch(String),
     /// The supplied key could not be parsed or doesn't match the requested algorithm.
     InvalidKey(String),
     /// Reading or writing a file failed.
@@ -17,6 +19,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::InvalidEnvelope(msg) => write!(f, "invalid envelope: {msg}"),
+            Error::DigestMismatch(msg) => write!(f, "digest mismatch: {msg}"),
             Error::InvalidKey(msg) => write!(f, "invalid key: {msg}"),
             Error::Io(err) => write!(f, "io error: {err}"),
         }

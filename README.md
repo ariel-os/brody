@@ -32,9 +32,10 @@ let signed_envelope = brody::sign_envelope(&envelope_bytes, &signer)?;
 ```
 
 `sign_envelope` is the high-level entry point: it extracts the existing `SUIT_Digest`,
-signs it, and appends a `COSE_Sign1_Tagged` authentication block. The `cose`, `envelope`,
-and `keys` modules are also public for callers that need finer-grained control over
-individual steps of the pipeline.
+verifies it against the manifest (key `3`), signs it, and appends a `COSE_Sign1_Tagged`
+authentication block. It returns an error and signs nothing if the digest does not match.
+The `cose`, `envelope`, and `keys` modules are also public for callers that need
+finer-grained control over individual steps of the pipeline.
 
 ## Testing
 

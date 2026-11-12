@@ -1,11 +1,19 @@
 //! Parses/patches the top-level `SUIT_Envelope` CBOR map, independent of taylor's crate.
 
 use ciborium::value::Value;
+use sha2::{Digest, Sha256, Sha384, Sha512};
 
 use crate::error::Error;
 
 /// Map key for `suit-authentication-wrapper` within `SUIT_Envelope`.
 const SUIT_AUTHENTICATION_WRAPPER: i128 = 2;
+/// Map key for `suit-manifest` within `SUIT_Envelope`.
+const SUIT_MANIFEST: u64 = 3;
+
+/// COSE hash algorithm IDs (RFC 9054) accepted in `SUIT_Digest`.
+const COSE_ALG_SHA_256: i64 = -16;
+const COSE_ALG_SHA_384: i64 = -43;
+const COSE_ALG_SHA_512: i64 = -44;
 
 /// Reads `bytes` as a `SUIT_Envelope` map and returns the raw `SUIT_Authentication` array
 /// bytes (the bstr under key 2, already CBOR-decoded one level).
@@ -83,6 +91,156 @@ pub fn digest_from_authentication(auth_array_bytes: &[u8]) -> Result<Vec<u8>, Er
         },
         _ => Err(Error::InvalidEnvelope("SUIT_Authentication is not an array".into())),
     }
+}
+
+/// Checks that `digest_bstr` (the `SUIT_Digest` bstr from `SUIT_Authentication[0]`) matches
+/// the bstr-wrapped manifest at key 3 of `envelope_bytes`.
+/// Signers MUST perform this check before signing.
+/// (--> https://www.ietf.org/archive/id/draft-ietf-suit-manifest-37.html#section-8.3)
+pub fn verify_manifest_digest(envelope_bytes: &[u8], digest_bstr: &[u8]) -> Result<(), Error> {
+    let (alg_id, expected) = parse_suit_digest(digest_bstr)?;
+    let manifest_bstr = manifest_bstr_bytes(envelope_bytes)?;
+    let computed = hash_with(alg_id, manifest_bstr)?;
+    if computed != expected {
+        return Err(Error::DigestMismatch(format!(
+            "SUIT_Digest is {}, but the manifest hashes to {}",
+            hex::encode(&expected),
+            hex::encode(&computed)
+        )));
+    }
+    Ok(())
+}
+
+/// Decodes a `SUIT_Digest` (`[suit-digest-algorithm-id, suit-digest-bytes, * extensions]`)
+/// into its algorithm ID and digest bytes.
+fn parse_suit_digest(digest_bstr: &[u8]) -> Result<(i64, Vec<u8>), Error> {
+    let value: Value = ciborium::de::from_reader(digest_bstr)
+        .map_err(|e| Error::InvalidEnvelope(format!("failed to decode SUIT_Digest: {e}")))?;
+    match value.as_array().map(Vec::as_slice) {
+        Some([Value::Integer(alg), Value::Bytes(digest), ..]) => {
+            let alg = i64::try_from(*alg).map_err(|_| {
+                Error::InvalidEnvelope("SUIT_Digest algorithm id is out of range".into())
+            })?;
+            Ok((alg, digest.clone()))
+        }
+        _ => Err(Error::InvalidEnvelope(
+            "SUIT_Digest must be [algorithm id (int), digest (bstr), ...]".into(),
+        )),
+    }
+}
+
+/// Hashes `data` with the COSE hash algorithm `alg_id`.
+fn hash_with(alg_id: i64, data: &[u8]) -> Result<Vec<u8>, Error> {
+    match alg_id {
+        COSE_ALG_SHA_256 => Ok(Sha256::digest(data).to_vec()),
+        COSE_ALG_SHA_384 => Ok(Sha384::digest(data).to_vec()),
+        COSE_ALG_SHA_512 => Ok(Sha512::digest(data).to_vec()),
+        other => Err(Error::InvalidEnvelope(format!(
+            "unsupported SUIT_Digest algorithm id {other}"
+        ))),
+    }
+}
+
+/// Returns the bytes of the `suit-manifest` (key 3) bstr exactly as encoded in `bytes`,
+/// including its CBOR header, since that is what `SUIT_Digest` covers. Re-encoding the
+/// decoded value could change the header, so the raw slice is located and borrowed instead.
+fn manifest_bstr_bytes(bytes: &[u8]) -> Result<&[u8], Error> {
+    let (mut major, mut pair_count, mut pos) = read_head(bytes, 0)?;
+    while major == 6 {
+        // Skip tags wrapping the envelope
+        (major, pair_count, pos) = read_head(bytes, pos)?;
+    }
+    if major != 5 {
+        return Err(Error::InvalidEnvelope(
+            "top-level CBOR item is not a map".into(),
+        ));
+    }
+
+    for _ in 0..pair_count {
+        let (key_major, key_arg, _) = read_head(bytes, pos)?;
+        let value_start = skip_item(bytes, pos)?;
+        if key_major == 0 && key_arg == SUIT_MANIFEST {
+            let (value_major, len, content_start) = read_head(bytes, value_start)?;
+            if value_major != 2 {
+                return Err(Error::InvalidEnvelope(
+                    "suit-manifest (key 3) is not a bstr".into(),
+                ));
+            }
+            let end = end_offset(bytes, content_start, len)?;
+            return Ok(&bytes[value_start..end]);
+        }
+        pos = skip_item(bytes, value_start)?;
+    }
+    Err(Error::InvalidEnvelope(
+        "missing suit-manifest (key 3)".into(),
+    ))
+}
+
+/// Reads the initial byte and argument of the CBOR data item at `pos`. Returns the major
+/// type, the argument, and the offset of the first byte after the item head.
+fn read_head(bytes: &[u8], pos: usize) -> Result<(u8, u64, usize), Error> {
+    let initial = *bytes.get(pos).ok_or_else(truncated)?;
+    let info = initial & 0x1f;
+    let extra = match info {
+        0..=23 => 0,
+        24 => 1,
+        25 => 2,
+        26 => 4,
+        27 => 8,
+        _ => {
+            return Err(Error::InvalidEnvelope(
+                "indefinite-length and reserved CBOR encodings are not supported".into(),
+            ));
+        }
+    };
+    let head_end = pos + 1 + extra;
+    let arg_bytes = bytes.get(pos + 1..head_end).ok_or_else(truncated)?;
+    let arg = if extra == 0 {
+        u64::from(info)
+    } else {
+        arg_bytes
+            .iter()
+            .fold(0u64, |acc, b| (acc << 8) | u64::from(*b))
+    };
+    Ok((initial >> 5, arg, head_end))
+}
+
+/// Returns the offset just past the CBOR data item starting at `start`, without decoding it.
+fn skip_item(bytes: &[u8], start: usize) -> Result<usize, Error> {
+    // Items still to skip. Each iteration consumes at least one byte, so saturating counts
+    // cannot loop forever on truncated input: `read_head` eventually fails.
+    let mut pending: u64 = 1;
+    let mut pos = start;
+    while pending > 0 {
+        let (major, arg, body) = read_head(bytes, pos)?;
+        pos = body;
+        pending -= 1;
+        match major {
+            // byte string | text string
+            2 | 3 => pos = end_offset(bytes, body, arg)?,
+            // array
+            4 => pending = pending.saturating_add(arg),
+            // map
+            5 => pending = pending.saturating_add(arg.saturating_mul(2)),
+            // tag
+            6 => pending = pending.saturating_add(1),
+            _ => {}
+        }
+    }
+    Ok(pos)
+}
+
+/// Returns the offset `len` bytes after `start`, or an error if that runs past `bytes`.
+fn end_offset(bytes: &[u8], start: usize, len: u64) -> Result<usize, Error> {
+    usize::try_from(len)
+        .ok()
+        .and_then(|len| start.checked_add(len))
+        .filter(|end| *end <= bytes.len())
+        .ok_or_else(truncated)
+}
+
+fn truncated() -> Error {
+    Error::InvalidEnvelope("truncated CBOR data".into())
 }
 
 /// Appends `block_bytes` (a single serialized CBOR item, e.g. from `cose::sign_digest`) as a
@@ -217,5 +375,68 @@ mod tests {
         assert_eq!(elements.len(), 2);
         assert_eq!(elements[0], Value::Bytes(b"the-digest".to_vec()));
         assert_eq!(elements[1], Value::Bytes(b"a-block".to_vec()));
+    }
+
+    /// Builds a `SUIT_Digest` bstr `[alg, hash(bstr-wrapped manifest)]` for `manifest`.
+    fn suit_digest_for(alg: i64, manifest: &[u8]) -> Vec<u8> {
+        let mut manifest_bstr = Vec::new();
+        ciborium::ser::into_writer(&Value::Bytes(manifest.to_vec()), &mut manifest_bstr).unwrap();
+        let digest = match alg {
+            -16 => Sha256::digest(&manifest_bstr).to_vec(),
+            -43 => Sha384::digest(&manifest_bstr).to_vec(),
+            -44 => Sha512::digest(&manifest_bstr).to_vec(),
+            other => panic!("test helper does not support alg {other}"),
+        };
+        let suit_digest = Value::Array(vec![Value::from(alg), Value::Bytes(digest)]);
+        let mut out = Vec::new();
+        ciborium::ser::into_writer(&suit_digest, &mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn manifest_bstr_bytes_keeps_non_minimal_header() {
+        // #6.107({2: h'aa', 3: h'58 03 616263'}) where key 3 uses a 1-byte length header for
+        // a 3-byte bstr, which is not minimal. The digest must cover those exact bytes.
+        let bytes = [
+            0xd8, 0x6b, // tag 107
+            0xa2, // map(2)
+            0x02, 0x41, 0xaa, // 2: h'aa'
+            0x03, 0x58, 0x03, b'a', b'b', b'c', // 3: non-minimal bstr "abc"
+        ];
+        assert_eq!(
+            manifest_bstr_bytes(&bytes).unwrap(),
+            &[0x58, 0x03, b'a', b'b', b'c']
+        );
+    }
+
+    #[test]
+    fn verify_manifest_digest_accepts_matching_digest_for_each_alg() {
+        let manifest = b"manifest-for-digest-check";
+        let envelope = build_envelope(&[], manifest);
+        for alg in [-16, -43, -44] {
+            let digest = suit_digest_for(alg, manifest);
+            verify_manifest_digest(&envelope, &digest)
+                .unwrap_or_else(|e| panic!("alg {alg} should verify: {e}"));
+        }
+    }
+
+    #[test]
+    fn verify_manifest_digest_rejects_mismatch() {
+        let envelope = build_envelope(&[], b"tampered-manifest");
+        let digest = suit_digest_for(-16, b"original-manifest");
+        let err = verify_manifest_digest(&envelope, &digest).unwrap_err();
+        assert!(matches!(err, Error::DigestMismatch(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn verify_manifest_digest_rejects_unsupported_alg() {
+        let manifest = b"manifest-for-digest-check";
+        let envelope = build_envelope(&[], manifest);
+        // -18 is cose-alg-shake128, which brody does not implement.
+        let digest = Value::Array(vec![Value::from(-18i64), Value::Bytes(vec![0; 32])]);
+        let mut digest_bytes = Vec::new();
+        ciborium::ser::into_writer(&digest, &mut digest_bytes).unwrap();
+        let err = verify_manifest_digest(&envelope, &digest_bytes).unwrap_err();
+        assert!(matches!(err, Error::InvalidEnvelope(_)), "got {err:?}");
     }
 }
