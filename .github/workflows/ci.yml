@@ -12,6 +12,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Taplo
+        uses: taiki-e/install-action@c44f6b046f1c29ae5918b1e0bfdbb2f1813836fd # v2
+        with:
+          tool: taplo
+          fallback: none
+
+      - name: Install Prek
+        uses: taiki-e/install-action@c44f6b046f1c29ae5918b1e0bfdbb2f1813836fd # v2
+        with:
+          tool: prek
+          fallback: none
+
+      - name: Run pre commit hooks
+        run: prek run --all-files --show-diff-on-failure --color always --hook-stage manual
+
       - name: Build project
         run: cargo build --all-targets --all-features
 
