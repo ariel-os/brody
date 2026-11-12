@@ -19,7 +19,10 @@ fn temp_path(name: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("brody-cli-test-{}-{nanos}-{name}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "brody-cli-test-{}-{nanos}-{name}",
+        std::process::id()
+    ))
 }
 
 /// Builds a minimal synthetic `SUIT_Envelope`: key 2 = bstr .cbor [digest bstr], key 3 = bstr.
@@ -57,6 +60,8 @@ fn signs_envelope_end_to_end() {
             output_path.to_str().unwrap(),
             "--alg",
             "es256",
+            "--key-source",
+            "provided",
             "--key",
             key_path.to_str().unwrap(),
         ])
@@ -85,7 +90,11 @@ fn signs_envelope_end_to_end() {
         Value::Array(e) => e,
         other => panic!("expected array, got {other:?}"),
     };
-    assert_eq!(elements.len(), 2, "expected original digest + one appended auth block");
+    assert_eq!(
+        elements.len(),
+        2,
+        "expected original digest + one appended auth block"
+    );
     assert_eq!(elements[0], Value::Bytes(digest));
 
     let block_bytes = match &elements[1] {
@@ -117,4 +126,70 @@ fn rejects_missing_required_args() {
         .status()
         .expect("failed to run brody binary");
     assert!(!status.success());
+}
+
+#[test]
+fn provided_key_source_requires_key() {
+    let output = Command::new(env!("CARGO_BIN_EXE_brody"))
+        .args([
+            "--input",
+            "input.cbor",
+            "--output",
+            "output.cbor",
+            "--alg",
+            "es256",
+            "--key-source",
+            "provided",
+        ])
+        .output()
+        .expect("failed to run brody binary");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--key <path> or --key-hex <hex>"));
+}
+
+#[test]
+fn hsm_source_requires_module_path() {
+    let output = Command::new(env!("CARGO_BIN_EXE_brody"))
+        .args([
+            "--hsm-config",
+            "missing_hsm_config.toml",
+            "--input",
+            "input.cbor",
+            "--output",
+            "output.cbor",
+            "--alg",
+            "es256",
+            "--key-source",
+            "hsm",
+        ])
+        .output()
+        .expect("failed to run brody binary");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--hsm-module <path>"));
+}
+
+#[test]
+fn hsm_source_requires_pin() {
+    let output = Command::new(env!("CARGO_BIN_EXE_brody"))
+        .args([
+            "--hsm-config",
+            "missing_hsm_config.toml",
+            "--input",
+            "input.cbor",
+            "--output",
+            "output.cbor",
+            "--alg",
+            "es256",
+            "--key-source",
+            "hsm",
+            "--hsm-module",
+            "module.so",
+        ])
+        .output()
+        .expect("failed to run brody binary");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--hsm-pin <pin>"));
 }

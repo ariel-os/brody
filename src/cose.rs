@@ -26,12 +26,15 @@ fn sig_structure(protected: &[u8], payload: &[u8]) -> Vec<u8> {
 /// `signer` and returns a `bstr`-wrapped detached-payload `COSE_Sign1_Tagged`
 /// (`#6.18(...)`) block.
 pub fn sign_digest(digest_bstr: &[u8], signer: &Signer) -> Result<Vec<u8>, Error> {
-    let protected_header = Value::Map(vec![(Value::from(1i64), Value::from(signer.alg_id() as i64))]);
+    let protected_header = Value::Map(vec![(
+        Value::from(1i64),
+        Value::from(signer.alg_id() as i64),
+    )]);
     let mut protected = Vec::new();
     ciborium::ser::into_writer(&protected_header, &mut protected)
         .map_err(|e| Error::InvalidEnvelope(format!("failed to encode protected header: {e}")))?;
 
-    let signature = signer.sign(&sig_structure(&protected, digest_bstr));
+    let signature = signer.sign(&sig_structure(&protected, digest_bstr))?;
 
     let cose_sign1 = Value::Array(vec![
         Value::Bytes(protected),
@@ -41,8 +44,11 @@ pub fn sign_digest(digest_bstr: &[u8], signer: &Signer) -> Result<Vec<u8>, Error
     ]);
 
     let mut tagged = Vec::new();
-    ciborium::ser::into_writer(&Value::Tag(COSE_SIGN1_TAG, Box::new(cose_sign1)), &mut tagged)
-        .map_err(|e| Error::InvalidEnvelope(format!("failed to encode COSE_Sign1: {e}")))?;
+    ciborium::ser::into_writer(
+        &Value::Tag(COSE_SIGN1_TAG, Box::new(cose_sign1)),
+        &mut tagged,
+    )
+    .map_err(|e| Error::InvalidEnvelope(format!("failed to encode COSE_Sign1: {e}")))?;
 
     let mut wrapped = Vec::new();
     ciborium::ser::into_writer(&Value::Bytes(tagged), &mut wrapped)

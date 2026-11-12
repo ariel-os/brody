@@ -16,6 +16,8 @@ All notable changes to `brody` are documented in this file.
 
 ### Added
 
+- PKCS#11 HSM signing via `--key-source hsm`, configurable through CLI arguments or
+  `hsm_config.toml`; the existing provided-key workflow remains the default.
 - `assets/DESIGN.md`: design documentation covering architecture, the `SUIT_Envelope`/
   `COSE_Sign1` pipeline, key handling, error model, and deliberate non-goals.
 - Doc comments for previously undocumented items in `src/main.rs` (`Args`, `parse_args`,
