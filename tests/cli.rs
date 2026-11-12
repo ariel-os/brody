@@ -19,7 +19,10 @@ fn temp_path(name: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("brody-cli-test-{}-{nanos}-{name}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "brody-cli-test-{}-{nanos}-{name}",
+        std::process::id()
+    ))
 }
 
 /// Builds a minimal synthetic `SUIT_Envelope`: key 2 = bstr .cbor [digest bstr], key 3 = bstr.
@@ -85,7 +88,11 @@ fn signs_envelope_end_to_end() {
         Value::Array(e) => e,
         other => panic!("expected array, got {other:?}"),
     };
-    assert_eq!(elements.len(), 2, "expected original digest + one appended auth block");
+    assert_eq!(
+        elements.len(),
+        2,
+        "expected original digest + one appended auth block"
+    );
     assert_eq!(elements[0], Value::Bytes(digest));
 
     let block_bytes = match &elements[1] {

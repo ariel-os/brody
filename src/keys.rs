@@ -83,7 +83,9 @@ fn parse_es256_pem(pem: &str) -> Result<p256::ecdsa::SigningKey, Error> {
     p256::SecretKey::from_sec1_pem(pem)
         .map(p256::ecdsa::SigningKey::from)
         .map_err(|e| {
-            Error::InvalidKey(format!("failed to parse P-256 PEM key (tried PKCS8 and SEC1): {e}"))
+            Error::InvalidKey(format!(
+                "failed to parse P-256 PEM key (tried PKCS8 and SEC1): {e}"
+            ))
         })
 }
 
@@ -96,7 +98,9 @@ fn parse_es384_pem(pem: &str) -> Result<p384::ecdsa::SigningKey, Error> {
     p384::SecretKey::from_sec1_pem(pem)
         .map(p384::ecdsa::SigningKey::from)
         .map_err(|e| {
-            Error::InvalidKey(format!("failed to parse P-384 PEM key (tried PKCS8 and SEC1): {e}"))
+            Error::InvalidKey(format!(
+                "failed to parse P-384 PEM key (tried PKCS8 and SEC1): {e}"
+            ))
         })
 }
 
@@ -141,7 +145,9 @@ pKQELulH6b4ROlsHPP12tVBNOhNUPn0AMlR18qJqG/VhDiTHy12cpzTn7Fb1NmbM
         };
         let reloaded = Signer::from_raw_bytes(&raw, Algorithm::Es256).unwrap();
         match (signer, reloaded) {
-            (Signer::Es256(a), Signer::Es256(b)) => assert_eq!(a.verifying_key(), b.verifying_key()),
+            (Signer::Es256(a), Signer::Es256(b)) => {
+                assert_eq!(a.verifying_key(), b.verifying_key())
+            }
             _ => panic!("expected Es256"),
         }
     }
