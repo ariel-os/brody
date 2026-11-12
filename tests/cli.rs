@@ -4,6 +4,7 @@
 use std::{fs, process::Command};
 
 use ciborium::value::Value;
+use sha2::{Digest, Sha256};
 
 // Throwaway P-256 test key (PKCS8 PEM), generated solely for this test via:
 // `openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt`
@@ -20,6 +21,17 @@ fn temp_path(name: &str) -> std::path::PathBuf {
         .unwrap()
         .as_nanos();
     std::env::temp_dir().join(format!("brody-cli-test-{}-{nanos}-{name}", std::process::id()))
+}
+
+/// Builds a `SUIT_Digest` bstr `[-16, sha-256(bstr-wrapped manifest)]` for `manifest`.
+fn suit_digest_bstr(manifest: &[u8]) -> Vec<u8> {
+    let mut manifest_bstr = Vec::new();
+    ciborium::ser::into_writer(&Value::Bytes(manifest.to_vec()), &mut manifest_bstr).unwrap();
+    let digest = Sha256::digest(&manifest_bstr);
+    let suit_digest = Value::Array(vec![Value::from(-16i64), Value::Bytes(digest.to_vec())]);
+    let mut out = Vec::new();
+    ciborium::ser::into_writer(&suit_digest, &mut out).unwrap();
+    out
 }
 
 /// Builds a minimal synthetic `SUIT_Envelope`: key 2 = bstr .cbor [digest bstr], key 3 = bstr.
@@ -39,8 +51,8 @@ fn build_test_envelope(digest: &[u8], manifest: &[u8]) -> Vec<u8> {
 
 #[test]
 fn signs_envelope_end_to_end() {
-    let digest = b"fixed-suit-digest-bstr-for-cli-test".to_vec();
     let manifest = b"fixed-manifest-bytes-must-stay-untouched".to_vec();
+    let digest = suit_digest_bstr(&manifest);
     let envelope_bytes = build_test_envelope(&digest, &manifest);
 
     let input_path = temp_path("input.cbor");
@@ -107,6 +119,38 @@ fn signs_envelope_end_to_end() {
 
     let _ = fs::remove_file(&input_path);
     let _ = fs::remove_file(&output_path);
+    let _ = fs::remove_file(&key_path);
+}
+
+#[test]
+fn rejects_digest_mismatch_without_writing_output() {
+    let digest = suit_digest_bstr(b"original-manifest");
+    let envelope_bytes = build_test_envelope(&digest, b"tampered-manifest");
+
+    let input_path = temp_path("mismatch-input.cbor");
+    let output_path = temp_path("mismatch-output.cbor");
+    let key_path = temp_path("mismatch-key.pem");
+    fs::write(&input_path, &envelope_bytes).unwrap();
+    fs::write(&key_path, ES256_PKCS8_PEM).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_brody"))
+        .args([
+            "--input",
+            input_path.to_str().unwrap(),
+            "--output",
+            output_path.to_str().unwrap(),
+            "--alg",
+            "es256",
+            "--key",
+            key_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run brody binary");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("digest mismatch"));
+    assert!(!output_path.exists());
+
+    let _ = fs::remove_file(&input_path);
     let _ = fs::remove_file(&key_path);
 }
 
