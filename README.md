@@ -8,7 +8,7 @@ Supports ECDSA ES256 (NIST P-256) and ES384 (NIST P-384).
 
 ## Status
 
-Implemented and tested — see [docs/DESIGN.md](docs/DESIGN.md) for the full design.
+Implemented and tested — see [assets/DESIGN.md](assets/DESIGN.md) for the full design.
 
 ## Usage
 
@@ -59,7 +59,7 @@ xxd signed.cbor | head
 
 ## Design references
 
-- `docs/suit-manifest.cddl` / `docs/suit-manifest-extension.cddl`: the CDDL this tool's
+- `assets/suit-manifest.cddl` / `assets/suit-manifest-extension.cddl`: the CDDL this tool's
   output must conform to (`SUIT_Authentication`, `SUIT_Digest`, `SUIT_Envelope`).
 - [RFC 9052](https://www.rfc-editor.org/rfc/rfc9052) (COSE): `COSE_Sign1` structure and
   `Sig_structure` construction.
