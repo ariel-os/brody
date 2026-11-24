@@ -23,8 +23,8 @@ to `provided`. With `provided`, supply a private key either as a PEM file via `-
 ### HSM usage
 
 With `hsm`, the signer logs in to the token with the given label and looks up the private
-EC key by label and ID, following `cryptoki_example.rs`. These five settings can be given in
-a TOML config file, `hsm_config.toml` (see [Test HSM signing](#test-hsm-signing) for an example), or as command-line arguments:
+EC key by label and ID. These five settings can be given in a TOML config file, 
+`hsm_config.toml` (see [Test HSM signing](#test-hsm-signing) for an example), or as command-line arguments:
 
 | Config field  | Argument        | Description                                    |
 |---------------|-----------------|------------------------------------------------|
@@ -66,8 +66,12 @@ export SOFTHSM2_CONF="./softhsm2.conf"
 Initialize a token with a test-only SO PIN and user PIN:
 
 ```bash
-softhsm2-util --init-token --free \
-  --label BrodyDemoToken --so-pin 12345678 --pin 1234
+softhsm2-util \
+  --init-token \
+  --free \
+  --label "BrodyDemoToken" \
+  --so-pin 12345678 \
+  --pin 1234
 ```
 
 Generate an `EC:prime256v1` keypair on that token:
@@ -75,9 +79,14 @@ Generate an `EC:prime256v1` keypair on that token:
 ```bash
 pkcs11-tool \
   --module /usr/lib/softhsm/libsofthsm2.so \
-  --token-label BrodyDemoToken --login --pin 1234 \
-  --keypairgen --key-type EC:prime256v1 \
-  --label BrodyDemoES256 --id 01 --usage-sign
+  --token-label "BrodyDemoToken" \
+  --login \
+  --pin 1234 \
+  --keypairgen \
+  --key-type EC:prime256v1 \
+  --label "BrodyDemoES256" \
+  --id 01 \
+  --usage-sign
 ```
 
 Create `hsm_config.toml` with the module path for your system and the same token/key
@@ -94,8 +103,12 @@ key-id = "01"
 Then sign a SUIT manifest with the CLI, replacing the input path with your manifest:
 
 ```bash
-cargo run -- --input path/to/envelope.cbor --output signed.cbor \
-  --alg es256 --key-source hsm --hsm-config hsm_config.toml
+cargo run -- \
+  --input path/to/envelope.cbor \
+  --output signed.cbor \
+  --alg es256 \
+  --key-source hsm \
+  --hsm-config hsm_config.toml
 ```
 
 ## Library usage
