@@ -2,3 +2,8 @@
 /out
 .vscode
 *.lock
+/tokens
+*.pem
+*.der
+hsm_config.toml
+softhsm2.conf

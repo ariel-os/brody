@@ -50,7 +50,9 @@ fn envelope_map(value: &Value) -> Result<&Vec<(Value, Value)>, Error> {
     match value {
         Value::Map(m) => Ok(m),
         Value::Tag(_, inner) => envelope_map(inner),
-        _ => Err(Error::InvalidEnvelope("top-level CBOR item is not a map".into())),
+        _ => Err(Error::InvalidEnvelope(
+            "top-level CBOR item is not a map".into(),
+        )),
     }
 }
 
@@ -59,7 +61,9 @@ fn envelope_map_mut(value: &mut Value) -> Result<&mut Vec<(Value, Value)>, Error
     match value {
         Value::Map(m) => Ok(m),
         Value::Tag(_, inner) => envelope_map_mut(inner),
-        _ => Err(Error::InvalidEnvelope("top-level CBOR item is not a map".into())),
+        _ => Err(Error::InvalidEnvelope(
+            "top-level CBOR item is not a map".into(),
+        )),
     }
 }
 
@@ -73,15 +77,22 @@ fn find_entry(map: &[(Value, Value)]) -> Option<&Value> {
 /// Returns the first element (the `SUIT_Digest` bstr) of a decoded `SUIT_Authentication`
 /// array (as returned by [`extract_authentication`]).
 pub fn digest_from_authentication(auth_array_bytes: &[u8]) -> Result<Vec<u8>, Error> {
-    let value: Value = ciborium::de::from_reader(auth_array_bytes)
-        .map_err(|e| Error::InvalidEnvelope(format!("failed to decode SUIT_Authentication: {e}")))?;
+    let value: Value = ciborium::de::from_reader(auth_array_bytes).map_err(|e| {
+        Error::InvalidEnvelope(format!("failed to decode SUIT_Authentication: {e}"))
+    })?;
     match value {
         Value::Array(elements) => match elements.first() {
             Some(Value::Bytes(b)) => Ok(b.clone()),
-            Some(_) => Err(Error::InvalidEnvelope("SUIT_Authentication[0] is not a bstr".into())),
-            None => Err(Error::InvalidEnvelope("SUIT_Authentication array is empty".into())),
+            Some(_) => Err(Error::InvalidEnvelope(
+                "SUIT_Authentication[0] is not a bstr".into(),
+            )),
+            None => Err(Error::InvalidEnvelope(
+                "SUIT_Authentication array is empty".into(),
+            )),
         },
-        _ => Err(Error::InvalidEnvelope("SUIT_Authentication is not an array".into())),
+        _ => Err(Error::InvalidEnvelope(
+            "SUIT_Authentication is not an array".into(),
+        )),
     }
 }
 
@@ -91,20 +102,27 @@ pub fn append_authentication_block(
     auth_array_bytes: &[u8],
     block_bytes: &[u8],
 ) -> Result<Vec<u8>, Error> {
-    let value: Value = ciborium::de::from_reader(auth_array_bytes)
-        .map_err(|e| Error::InvalidEnvelope(format!("failed to decode SUIT_Authentication: {e}")))?;
+    let value: Value = ciborium::de::from_reader(auth_array_bytes).map_err(|e| {
+        Error::InvalidEnvelope(format!("failed to decode SUIT_Authentication: {e}"))
+    })?;
     let mut elements = match value {
         Value::Array(elements) => elements,
-        _ => return Err(Error::InvalidEnvelope("SUIT_Authentication is not an array".into())),
+        _ => {
+            return Err(Error::InvalidEnvelope(
+                "SUIT_Authentication is not an array".into(),
+            ));
+        }
     };
 
-    let block: Value = ciborium::de::from_reader(block_bytes)
-        .map_err(|e| Error::InvalidEnvelope(format!("failed to decode authentication block: {e}")))?;
+    let block: Value = ciborium::de::from_reader(block_bytes).map_err(|e| {
+        Error::InvalidEnvelope(format!("failed to decode authentication block: {e}"))
+    })?;
     elements.push(block);
 
     let mut out = Vec::new();
-    ciborium::ser::into_writer(&Value::Array(elements), &mut out)
-        .map_err(|e| Error::InvalidEnvelope(format!("failed to encode SUIT_Authentication: {e}")))?;
+    ciborium::ser::into_writer(&Value::Array(elements), &mut out).map_err(|e| {
+        Error::InvalidEnvelope(format!("failed to encode SUIT_Authentication: {e}"))
+    })?;
     Ok(out)
 }
 
@@ -143,7 +161,10 @@ mod tests {
 
     #[test]
     fn extract_errors_on_missing_key() {
-        let map = Value::Map(vec![(Value::from(3i64), Value::Bytes(b"manifest".to_vec()))]);
+        let map = Value::Map(vec![(
+            Value::from(3i64),
+            Value::Bytes(b"manifest".to_vec()),
+        )]);
         let mut bytes = Vec::new();
         ciborium::ser::into_writer(&map, &mut bytes).unwrap();
         assert!(extract_authentication(&bytes).is_err());
@@ -169,12 +190,18 @@ mod tests {
         let original = build_envelope(b"digest-bytes", b"manifest-bytes");
         let replaced = replace_authentication(&original, b"new-auth-block").unwrap();
         assert_eq!(extract_manifest(&replaced), extract_manifest(&original));
-        assert_eq!(extract_authentication(&replaced).unwrap(), b"new-auth-block");
+        assert_eq!(
+            extract_authentication(&replaced).unwrap(),
+            b"new-auth-block"
+        );
     }
 
     #[test]
     fn replace_errors_on_missing_key() {
-        let map = Value::Map(vec![(Value::from(3i64), Value::Bytes(b"manifest".to_vec()))]);
+        let map = Value::Map(vec![(
+            Value::from(3i64),
+            Value::Bytes(b"manifest".to_vec()),
+        )]);
         let mut bytes = Vec::new();
         ciborium::ser::into_writer(&map, &mut bytes).unwrap();
         assert!(replace_authentication(&bytes, b"auth").is_err());

@@ -9,6 +9,8 @@ pub enum Error {
     InvalidEnvelope(String),
     /// The supplied key could not be parsed or doesn't match the requested algorithm.
     InvalidKey(String),
+    /// An HSM or PKCS#11 operation failed.
+    Hsm(String),
     /// Reading or writing a file failed.
     Io(std::io::Error),
 }
@@ -18,6 +20,7 @@ impl fmt::Display for Error {
         match self {
             Error::InvalidEnvelope(msg) => write!(f, "invalid envelope: {msg}"),
             Error::InvalidKey(msg) => write!(f, "invalid key: {msg}"),
+            Error::Hsm(msg) => write!(f, "HSM error: {msg}"),
             Error::Io(err) => write!(f, "io error: {err}"),
         }
     }
