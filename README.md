@@ -23,13 +23,14 @@ to `provided`. With `provided`, supply a private key either as a PEM file via `-
 ### HSM usage
 
 With `hsm`, the signer logs in to the token with the given label and looks up the private
-EC key by label and ID. These five settings can be given in a TOML config file, 
+EC key by label and ID. Settings can be given in a TOML config file,
 `hsm_config.toml` (see [Test HSM signing](#test-hsm-signing) for an example), or as command-line arguments:
 
 | Config field  | Argument        | Description                                    |
 |---------------|-----------------|------------------------------------------------|
 | `module`      | `--hsm-module`  | Path to the PKCS#11 module                     |
 | `pin`         | `--hsm-pin`     | User PIN for the token                         |
+| `pin-env`     | `--hsm-pin-env` | Name of the environment variable holding the PIN |
 | `token-label` | `--token-label` | Label of the token that holds the signing key  |
 | `key-label`   | `--key-label`   | Label of the signing key                       |
 | `key-id`      | `--key-id`      | ID of the signing key, hex-encoded (e.g. `02`) |
@@ -37,13 +38,23 @@ EC key by label and ID. These five settings can be given in a TOML config file,
 - The config file is read from `./hsm_config.toml` in the current directory by default.
   Use `--hsm-config <path>` to read a different file.
 - A command-line argument overrides the matching config field.
-- An argument is required only when the config file is missing or its corresponding field is
-  missing, empty, or invalid (for `key-id`, not valid hex). A malformed TOML file is an error.
+- Module, token label, key label, and key ID arguments are required when their config fields
+  are missing, empty, or invalid (for `key-id`, not valid hex). A malformed TOML file is an error.
 - The HSM arguments can only be used with `--key-source hsm`.
 
-The PIN can be given in the config file or on the command line. Command-line arguments are
-visible to other users on the system, and config files should be kept out of version control
-if they contain a real PIN.
+For automation, set `HSM_PIN` in the environment. To use a different variable, provide its
+**name** with `--hsm-pin-env ENV_VAR` or `pin-env = "ENV_VAR"` in the config file. An
+explicitly named variable must be set and nonempty. If the default `HSM_PIN` is unset,
+brody prompts without echo on a terminal and fails when no terminal is available. An empty
+PIN is always an error.
+
+PIN sources take precedence in this order: `--hsm-pin`, `--hsm-pin-env`, config `pin`,
+config `pin-env`, and `HSM_PIN`, followed by the interactive prompt.
+
+**IMPORTANT:** The direct `--hsm-pin` and config `pin` options are intended only for testing and are not
+recommended for real use. Command-line PINs can appear in process listings and shell
+history, and config files can expose PINs or be accidentally committed. Prefer a secret
+manager-provided environment variable or the interactive prompt.
 
 ### Test HSM signing
 
@@ -127,6 +138,9 @@ let signed_envelope = brody::sign_envelope(&envelope_bytes, &signer)?;
 signs it, and appends a `COSE_Sign1_Tagged` authentication block. The `cose`, `envelope`,
 and `keys` modules are also public for callers that need finer-grained control over
 individual steps of the pipeline.
+
+For HSM signing from Rust, `Signer::from_hsm` takes the module path, an `HsmCredentials`
+value containing a `secrecy::SecretString` PIN and the token/key identifiers, and the algorithm.
 
 ## Testing
 

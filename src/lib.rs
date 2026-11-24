@@ -11,7 +11,7 @@ pub mod error;
 pub mod keys;
 
 pub use error::Error;
-pub use keys::{Algorithm, Signer};
+pub use keys::{Algorithm, HsmCredentials, Signer};
 
 /// Signs `envelope_bytes` (a full `SUIT_Envelope` CBOR blob) with `signer`: extracts the
 /// existing `SUIT_Digest`, signs it, and appends a new `COSE_Sign1_Tagged` authentication

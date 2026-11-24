@@ -7,8 +7,8 @@ use cryptoki::{
     mechanism::Mechanism,
     object::{Attribute, KeyType, ObjectClass, ObjectHandle},
     session::{Session, UserType},
-    types::AuthPin,
 };
+use secrecy::SecretString;
 use sha2::{Digest, Sha256, Sha384};
 
 use crate::error::Error;
@@ -20,6 +20,18 @@ pub enum Algorithm {
     Es256,
     /// ES384 (COSE alg -35), NIST P-384.
     Es384,
+}
+
+/// Credentials and key identifiers used to log in and select an HSM signing key.
+pub struct HsmCredentials {
+    /// PIN for the token's user.
+    pub pin: SecretString,
+    /// Label of the token.
+    pub token_label: String,
+    /// Label of the private key.
+    pub key_label: String,
+    /// Binary identifier of the private key.
+    pub key_id: Vec<u8>,
 }
 
 /// A loaded signing key, ready to sign.
@@ -77,12 +89,15 @@ impl Signer {
     /// private key with the given label and ID.
     pub fn from_hsm(
         module_path: &Path,
-        pin: &str,
-        token_label: &str,
-        key_label: &str,
-        key_id: &[u8],
+        credentials: HsmCredentials,
         algorithm: Algorithm,
     ) -> Result<Self, Error> {
+        let HsmCredentials {
+            pin,
+            token_label,
+            key_label,
+            key_id,
+        } = credentials;
         let pkcs11 = Pkcs11::new(module_path.to_string_lossy().into_owned())
             .map_err(|e| Error::Hsm(format!("could not load PKCS#11 module: {e}")))?;
         pkcs11
@@ -118,10 +133,10 @@ impl Signer {
         let session = pkcs11
             .open_rw_session(slot)
             .map_err(|e| Error::Hsm(format!("could not open token session: {e}")))?;
-        let user_pin = AuthPin::new(pin.to_owned().into());
         session
-            .login(UserType::User, Some(&user_pin))
+            .login(UserType::User, Some(&pin))
             .map_err(|e| Error::Hsm(format!("could not log in to token: {e}")))?;
+        drop(pin);
 
         let key_template = [
             Attribute::Class(ObjectClass::PRIVATE_KEY),
@@ -138,13 +153,13 @@ impl Signer {
             [] => {
                 return Err(Error::Hsm(format!(
                     "no private key found with label {key_label} and ID {}",
-                    hex::encode(key_id)
+                    hex::encode(&key_id)
                 )));
             }
             _ => {
                 return Err(Error::Hsm(format!(
                     "multiple private keys found with label {key_label} and ID {}",
-                    hex::encode(key_id)
+                    hex::encode(&key_id)
                 )));
             }
         };
