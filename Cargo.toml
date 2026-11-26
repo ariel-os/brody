@@ -20,6 +20,9 @@ path = "src/lib.rs"
 name = "brody"
 path = "src/main.rs"
 
+[features]
+verify = []
+
 [dependencies]
 ciborium = "0.2.2"
 hex = "0.4.3"

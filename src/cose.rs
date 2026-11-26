@@ -6,10 +6,10 @@ use ciborium::value::Value;
 use crate::{error::Error, keys::Signer};
 
 /// CBOR tag number for `COSE_Sign1_Tagged` (RFC 9052 Section 4.2).
-const COSE_SIGN1_TAG: u64 = 18;
+pub(crate) const COSE_SIGN1_TAG: u64 = 18;
 
 /// Builds the CBOR-encoded `Sig_structure` ("Signature1") for `protected` + `payload`.
-fn sig_structure(protected: &[u8], payload: &[u8]) -> Vec<u8> {
+pub(crate) fn sig_structure(protected: &[u8], payload: &[u8]) -> Vec<u8> {
     let structure = Value::Array(vec![
         Value::Text("Signature1".into()),
         Value::Bytes(protected.to_vec()),

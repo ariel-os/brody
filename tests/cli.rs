@@ -118,3 +118,78 @@ fn rejects_missing_required_args() {
         .expect("failed to run brody binary");
     assert!(!status.success());
 }
+
+#[cfg(feature = "verify")]
+#[test]
+fn verifies_signed_envelope_end_to_end() {
+    use p256::pkcs8::EncodePublicKey as _;
+
+    let digest = b"fixed-suit-digest-bstr-for-verify-cli-test".to_vec();
+    let manifest = b"fixed-manifest-bytes".to_vec();
+    let envelope_bytes = build_test_envelope(&digest, &manifest);
+
+    let signer = brody::Signer::from_pem(ES256_PKCS8_PEM, brody::Algorithm::Es256).unwrap();
+    let pub_pem = match &signer {
+        brody::Signer::Es256(k) => k
+            .verifying_key()
+            .to_public_key_pem(p256::pkcs8::LineEnding::LF)
+            .unwrap(),
+        brody::Signer::Es384(_) => unreachable!(),
+    };
+
+    let input_path = temp_path("verify-input.cbor");
+    let signed_path = temp_path("verify-signed.cbor");
+    let key_path = temp_path("verify-priv.pem");
+    let pub_path = temp_path("verify-pub.pem");
+    fs::write(&input_path, &envelope_bytes).unwrap();
+    fs::write(&key_path, ES256_PKCS8_PEM).unwrap();
+    fs::write(&pub_path, &pub_pem).unwrap();
+
+    let sign_status = Command::new(env!("CARGO_BIN_EXE_brody"))
+        .args([
+            "--input",
+            input_path.to_str().unwrap(),
+            "--output",
+            signed_path.to_str().unwrap(),
+            "--alg",
+            "es256",
+            "--key",
+            key_path.to_str().unwrap(),
+        ])
+        .status()
+        .expect("failed to run brody binary for signing");
+    assert!(sign_status.success());
+
+    let verify_output = Command::new(env!("CARGO_BIN_EXE_brody"))
+        .args([
+            "verify",
+            signed_path.to_str().unwrap(),
+            pub_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run brody binary for verification");
+    assert!(
+        verify_output.status.success(),
+        "verify failed: {}",
+        String::from_utf8_lossy(&verify_output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&verify_output.stdout).contains("Manifest Verification: OK")
+    );
+
+    // Unsigned envelope should fail verification.
+    let fail_status = Command::new(env!("CARGO_BIN_EXE_brody"))
+        .args([
+            "verify",
+            input_path.to_str().unwrap(),
+            pub_path.to_str().unwrap(),
+        ])
+        .status()
+        .expect("failed to run brody binary for negative verification");
+    assert!(!fail_status.success());
+
+    let _ = fs::remove_file(&input_path);
+    let _ = fs::remove_file(&signed_path);
+    let _ = fs::remove_file(&key_path);
+    let _ = fs::remove_file(&pub_path);
+}

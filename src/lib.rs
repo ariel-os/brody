@@ -9,9 +9,13 @@ pub mod cose;
 pub mod envelope;
 pub mod error;
 pub mod keys;
+#[cfg(feature = "verify")]
+pub mod verify;
 
 pub use error::Error;
 pub use keys::{Algorithm, Signer};
+#[cfg(feature = "verify")]
+pub use verify::{Verifier, verify_envelope, verify_envelope_pem};
 
 /// Signs `envelope_bytes` (a full `SUIT_Envelope` CBOR blob) with `signer`: extracts the
 /// existing `SUIT_Digest`, signs it, and appends a new `COSE_Sign1_Tagged` authentication
