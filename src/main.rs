@@ -6,23 +6,40 @@ use std::{fs, path::PathBuf, process::ExitCode};
 use brody::{Algorithm, Error, Signer};
 use clap::{ArgGroup, Parser, ValueEnum};
 
-/// Parsed CLI arguments for a single signing invocation.
+/// Parsed CLI arguments for signing (or, with the `verify` feature, verifying).
 #[derive(Debug, Parser)]
 #[command(
     about = "Signs a SUIT_Envelope CBOR file with ECDSA.",
     group(ArgGroup::new("key").required(true).args(["key_pem_path", "key_hex"]))
 )]
+#[cfg_attr(feature = "verify", command(subcommand_negates_reqs = true))]
 struct Args {
-    #[arg(long, short = 'i', value_name = "PATH")]
-    input: PathBuf,
-    #[arg(long, short = 'o', value_name = "PATH")]
-    output: PathBuf,
-    #[arg(long = "alg", value_enum, value_name = "ALGORITHM")]
-    algorithm: CliAlgorithm,
+    #[cfg(feature = "verify")]
+    #[command(subcommand)]
+    command: Option<Command>,
+
+    #[arg(long, short = 'i', value_name = "PATH", required = true)]
+    input: Option<PathBuf>,
+    #[arg(long, short = 'o', value_name = "PATH", required = true)]
+    output: Option<PathBuf>,
+    #[arg(long = "alg", value_enum, value_name = "ALGORITHM", required = true)]
+    algorithm: Option<CliAlgorithm>,
     #[arg(long = "key", short = 'k', value_name = "PATH")]
     key_pem_path: Option<PathBuf>,
     #[arg(long = "key-hex", value_name = "HEX")]
     key_hex: Option<String>,
+}
+
+#[cfg(feature = "verify")]
+#[derive(Debug, clap::Subcommand)]
+enum Command {
+    /// Verify the COSE signature in a SUIT manifest.
+    Verify {
+        /// Path to the encoded SUIT manifest
+        manifest: PathBuf,
+        /// Path to a PEM-encoded public key
+        pub_key: PathBuf,
+    },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -41,16 +58,16 @@ impl From<CliAlgorithm> for Algorithm {
 }
 
 /// Loads the `Signer` requested by `args`, from either a PEM file or a raw hex scalar.
-fn load_signer(args: &Args) -> Result<Signer, Error> {
+fn load_signer(args: &Args, algorithm: Algorithm) -> Result<Signer, Error> {
     match (&args.key_pem_path, &args.key_hex) {
         (Some(path), None) => {
             let pem = fs::read_to_string(path)?;
-            Signer::from_pem(&pem, args.algorithm.into())
+            Signer::from_pem(&pem, algorithm)
         }
         (None, Some(hex_str)) => {
             let bytes = hex::decode(hex_str)
                 .map_err(|e| Error::InvalidKey(format!("invalid --key-hex value: {e}")))?;
-            Signer::from_raw_bytes(&bytes, args.algorithm.into())
+            Signer::from_raw_bytes(&bytes, algorithm)
         }
         (Some(_), Some(_)) => Err(Error::InvalidKey(
             "specify only one of --key or --key-hex".into(),
@@ -61,12 +78,26 @@ fn load_signer(args: &Args) -> Result<Signer, Error> {
     }
 }
 
-/// Loads the key and input envelope, signs it, and writes the result to `args.output`.
+/// Loads the key and input envelope, signs it, and writes the result to `args.output`
+/// (or verifies a signed manifest when invoked with the `verify` subcommand).
 fn run(args: &Args) -> Result<(), Error> {
-    let signer = load_signer(args)?;
-    let envelope_bytes = fs::read(&args.input)?;
+    #[cfg(feature = "verify")]
+    if let Some(Command::Verify { manifest, pub_key }) = &args.command {
+        let input = fs::read(manifest)?;
+        let public_key_pem = fs::read_to_string(pub_key)?;
+        brody::verify_envelope_pem(&input, &public_key_pem)?;
+        println!("Manifest Verification: OK");
+        return Ok(());
+    }
+
+    let input = args.input.as_ref().expect("clap enforces --input");
+    let output = args.output.as_ref().expect("clap enforces --output");
+    let algorithm: Algorithm = args.algorithm.expect("clap enforces --alg").into();
+
+    let signer = load_signer(args, algorithm)?;
+    let envelope_bytes = fs::read(input)?;
     let signed_envelope = brody::sign_envelope(&envelope_bytes, &signer)?;
-    fs::write(&args.output, signed_envelope)?;
+    fs::write(output, signed_envelope)?;
     Ok(())
 }
 

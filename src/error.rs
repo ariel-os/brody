@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-/// Errors that can occur while signing a SUIT envelope.
+/// Errors that can occur while signing or verifying a SUIT envelope.
 #[derive(Debug)]
 pub enum Error {
     /// The input bytes are not a well-formed `SUIT_Envelope` CBOR map.
@@ -11,6 +11,9 @@ pub enum Error {
     InvalidKey(String),
     /// Reading or writing a file failed.
     Io(std::io::Error),
+    /// Signature verification of the SUIT envelope failed.
+    #[cfg(feature = "verify")]
+    VerificationFailed(String),
 }
 
 impl fmt::Display for Error {
@@ -19,6 +22,8 @@ impl fmt::Display for Error {
             Error::InvalidEnvelope(msg) => write!(f, "invalid envelope: {msg}"),
             Error::InvalidKey(msg) => write!(f, "invalid key: {msg}"),
             Error::Io(err) => write!(f, "io error: {err}"),
+            #[cfg(feature = "verify")]
+            Error::VerificationFailed(msg) => write!(f, "verification failed: {msg}"),
         }
     }
 }

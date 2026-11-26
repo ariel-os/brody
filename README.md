@@ -19,6 +19,15 @@ cargo run -- --input envelope.cbor --output signed.cbor --alg es256 --key privat
 `--alg` accepts `es256` or `es384`. The private key can be supplied either as a PEM file
 via `--key <path>` (PKCS8 or SEC1) or as raw scalar bytes in hex via `--key-hex <hex>`.
 
+### Verifying signatures (`verify` feature)
+
+With the opt-in `verify` feature enabled, `brody` can also verify the `COSE_Sign1`
+signature of a signed SUIT manifest using a PEM-encoded ECDSA public key (P-256 or P-384):
+
+```
+cargo run --features verify -- verify path/to/manifest path/to/pubkey.pem
+```
+
 ## Library usage
 
 `brody` is also a library, so it can be used as a dependency by other Rust projects
@@ -29,6 +38,12 @@ use brody::{Algorithm, Signer};
 
 let signer = Signer::from_pem(pem_str, Algorithm::Es256)?;
 let signed_envelope = brody::sign_envelope(&envelope_bytes, &signer)?;
+```
+
+With the `verify` feature enabled:
+
+```rust
+brody::verify_envelope_pem(&signed_envelope, pub_key_pem)?;
 ```
 
 `sign_envelope` is the high-level entry point: it extracts the existing `SUIT_Digest`,
